@@ -1,0 +1,225 @@
+import 'package:flutter/material.dart';
+import 'package:provider/provider.dart';
+
+// DATA_MODEL
+/// Represents a single expense item with a title and a unique ID.
+class Expense {
+  final String id;
+  final String title;
+
+  Expense({required this.id, required this.title});
+}
+
+/// Manages a list of expenses and notifies listeners of changes.
+class ExpenseListProvider extends ChangeNotifier {
+  final List<Expense> _expenses;
+
+  /// Initializes the expense list as empty.
+  ExpenseListProvider() : _expenses = [];
+
+  /// Provides an unmodifiable view of the current list of expenses.
+  List<Expense> get expenses => List<Expense>.unmodifiable(_expenses);
+
+  /// Adds a new expense to the list and notifies all listeners.
+  void addExpense(Expense expense) {
+    _expenses.add(expense);
+    notifyListeners();
+  }
+
+  /// Deletes an expense from the list by its ID and notifies all listeners.
+  void deleteExpense(String id) {
+    _expenses.removeWhere((Expense expense) => expense.id == id);
+    notifyListeners();
+  }
+}
+
+void main() {
+  runApp(const ExpenseTrackerApp());
+}
+
+class ExpenseTrackerApp extends StatelessWidget {
+  const ExpenseTrackerApp({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    return ChangeNotifierProvider<ExpenseListProvider>(
+      // Create a new instance of ExpenseListProvider.
+      create: (BuildContext context) => ExpenseListProvider(),
+      // The builder function ensures the context is correct for accessing the provider.
+      builder: (BuildContext context, Widget? child) {
+        return MaterialApp(
+          title: 'Expense Tracker',
+          theme: ThemeData(primarySwatch: Colors.blue),
+          home: const ExpensesHomePage(),
+        );
+      },
+    );
+  }
+}
+
+// --- Screen 1: Home Page ---
+class ExpensesHomePage extends StatelessWidget {
+  const ExpensesHomePage({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(
+        title: const Text('My Expenses'),
+        actions: <Widget>[
+          IconButton(
+            icon: const Icon(Icons.add),
+            onPressed: () => _navigateToAddExpense(context),
+          ),
+        ],
+      ),
+      body: Consumer<ExpenseListProvider>(
+        // The builder function rebuilds when ExpenseListProvider notifies listeners.
+        builder: (BuildContext context, ExpenseListProvider expenseListProvider, Widget? child) {
+          if (expenseListProvider.expenses.isEmpty) {
+            return const Center(
+              child: Text('No expenses added yet. Tap the "+" button to add one!'),
+            );
+          } else {
+            return ListView.builder(
+              itemCount: expenseListProvider.expenses.length,
+              itemBuilder: (BuildContext context, int index) {
+                final Expense expense = expenseListProvider.expenses[index];
+                return ExpenseListItem(expense: expense);
+              },
+            );
+          }
+        },
+      ),
+      floatingActionButton: FloatingActionButton(
+        onPressed: () => _navigateToAddExpense(context),
+        child: const Icon(Icons.add),
+      ),
+    );
+  }
+
+  /// Helper method to navigate to the AddExpensePage.
+  void _navigateToAddExpense(BuildContext context) {
+    Navigator.push(
+      context,
+      MaterialPageRoute<void>(builder: (BuildContext context) => const AddExpensePage()),
+    );
+  }
+}
+
+/// A widget to display a single expense item in a list.
+class ExpenseListItem extends StatelessWidget {
+  final Expense expense;
+
+  const ExpenseListItem({super.key, required this.expense});
+
+  @override
+  Widget build(BuildContext context) {
+    return Card(
+      margin: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 8.0),
+      child: Padding(
+        padding: const EdgeInsets.all(16.0),
+        child: Row(
+          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          children: <Widget>[
+            Expanded(
+              child: Text(
+                expense.title,
+                style: const TextStyle(fontSize: 18.0, fontWeight: FontWeight.bold),
+                overflow: TextOverflow.ellipsis,
+              ),
+            ),
+            IconButton(
+              icon: const Icon(Icons.delete, color: Colors.red),
+              onPressed: () {
+                // Access the provider without listening for UI rebuilds to delete the expense.
+                Provider.of<ExpenseListProvider>(context, listen: false).deleteExpense(expense.id);
+              },
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+// --- Screen 2: Add Expense Page ---
+class AddExpensePage extends StatefulWidget {
+  const AddExpensePage({super.key});
+
+  @override
+  State<AddExpensePage> createState() => _AddExpensePageState();
+}
+
+class _AddExpensePageState extends State<AddExpensePage> {
+  final GlobalKey<FormState> _formKey = GlobalKey<FormState>();
+  final TextEditingController _titleController = TextEditingController();
+
+  @override
+  void dispose() {
+    _titleController.dispose();
+    super.dispose();
+  }
+
+  /// Handles saving the new expense.
+  void _saveExpense() {
+    if (_formKey.currentState!.validate()) {
+      final String title = _titleController.text.trim();
+      // Generate a simple unique ID for the new expense.
+      final String id = DateTime.now().microsecondsSinceEpoch.toString();
+
+      final Expense newExpense = Expense(id: id, title: title);
+      // Access the provider without listening for UI rebuilds.
+      Provider.of<ExpenseListProvider>(context, listen: false).addExpense(newExpense);
+      Navigator.pop(context); // Go back to the previous screen
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(
+        title: const Text('Add New Expense'),
+      ),
+      body: Padding(
+        padding: const EdgeInsets.all(16.0),
+        child: Form(
+          key: _formKey,
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: <Widget>[
+              TextFormField(
+                controller: _titleController,
+                decoration: const InputDecoration(
+                  labelText: 'Expense Title',
+                  border: OutlineInputBorder(),
+                  prefixIcon: Icon(Icons.description),
+                ),
+                validator: (String? value) {
+                  if (value == null || value.trim().isEmpty) {
+                    return 'Please enter a title for the expense';
+                  }
+                  return null;
+                },
+              ),
+              const SizedBox(height: 20),
+              ElevatedButton(
+                onPressed: _saveExpense,
+                style: ElevatedButton.styleFrom(
+                  padding: const EdgeInsets.symmetric(vertical: 12.0),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(8.0),
+                  ),
+                ),
+                child: const Text(
+                  'Save Expense',
+                  style: TextStyle(fontSize: 18.0),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
